@@ -13,6 +13,8 @@
 #include "source_hsolver/para_lin_tf.h"
 #include "source_io/module_parameter/parameter.h"
 
+#include <vector>
+
 template <typename T, typename Device>
 Stochastic_Iter<T, Device>::Stochastic_Iter()
 {
@@ -73,8 +75,7 @@ void Stochastic_Iter<T, Device>::orthog(const int& ik, psi::Psi<T, Device>& psi,
         cpymem_complex_op()(wfgout, wfgin, npwx * nchipk);
 
         // orthogonal part
-        T* sum = nullptr;
-        resmem_complex_op()(sum, nbands * nchipk);
+        std::vector<T> sum(nbands * nchipk);
 
         if(PARAM.globalv.all_ks_run)
         {
@@ -85,7 +86,7 @@ void Stochastic_Iter<T, Device>::orthog(const int& ik, psi::Psi<T, Device>& psi,
 #else
             pmmcn.set_dimension(nbands_l, npwx, nchipk, npwx, npw, nbands, 2);
 #endif
-            pmmcn.multiply(1.0, &psi(ik, 0, 0), wfgout, 0.0, sum);
+            pmmcn.multiply(1.0, &psi(ik, 0, 0), wfgout, 0.0, sum.data());
 
             // psi -= psi * sum
             hsolver::PLinearTransform<T, Device> pltrans;
@@ -94,7 +95,7 @@ void Stochastic_Iter<T, Device>::orthog(const int& ik, psi::Psi<T, Device>& psi,
 #else
             pltrans.set_dimension(npw, nbands_l, nchipk, npwx, true);
 #endif
-            pltrans.act(-1.0, &psi(ik, 0, 0), sum, 1.0, wfgout);
+            pltrans.act(-1.0, &psi(ik, 0, 0), sum.data(), 1.0, wfgout);
         }
         else
         {
@@ -110,9 +111,9 @@ void Stochastic_Iter<T, Device>::orthog(const int& ik, psi::Psi<T, Device>& psi,
                                              wfgout,
                                              npwx,
                                              &ModuleBase::ZERO,
-                                             sum,
+                                             sum.data(),
                                              nbands);
-            Parallel_Reduce::reduce_pool(sum, nbands * nchipk);
+            Parallel_Reduce::reduce_pool(sum.data(), nbands * nchipk);
 
             // psi -= psi * sum
             ModuleBase::gemm_op<T, Device>()('N',
@@ -123,14 +124,12 @@ void Stochastic_Iter<T, Device>::orthog(const int& ik, psi::Psi<T, Device>& psi,
                                              &ModuleBase::NEG_ONE,
                                              &psi(ik, 0, 0),
                                              npwx,
-                                             sum,
+                                             sum.data(),
                                              nbands,
                                              &ModuleBase::ONE,
                                              wfgout,
                                              npwx);
         }
-
-        delmem_complex_op()(sum);
     }
     ModuleBase::timer::end("Stochastic_Iter", "orthog");
 }
